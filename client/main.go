@@ -16,12 +16,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	kcpraw "github.com/ccsexyz/kcp-go-raw"
-	"github.com/ccsexyz/smux"
+	kcpraw "github.com/wwqk4444/kcp-go-raw"
+	"github.com/wwqk4444/smux"
 	"github.com/golang/snappy"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
-	kcp "github.com/xtaci/kcp-go"
+	kcp "github.com/wwqk4444/kcp-go"
 )
 
 var (
