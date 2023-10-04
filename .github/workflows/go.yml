@@ -25,7 +25,7 @@ jobs:
       run: go env -w GO111MODULE=off
     
     - name: Build
-      run: go build -v github.com/wwqk4444/1/client
+      run: go build -v github.com/wwqk4444/1/tree/master/client
 
     - name: Test
       run: go test -v github.com/wwqk4444/1/client
