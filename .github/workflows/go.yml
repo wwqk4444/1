@@ -24,8 +24,11 @@ jobs:
     - name: wwq
       run: go env -w GO111MODULE=auto
     
-    - name: Build
-      run: go build -v github.com/wwqk4444/1/
+    - name: a1
+      run: go get github.com/wwqk4444/1
 
-    - name: Test
-      run: go test -v github.com/wwqk4444/1/
+    - name: a2
+      run: cd $GOPATH/src/github.com/wwqk4444/1
+
+    - name: a3
+      run: ls
