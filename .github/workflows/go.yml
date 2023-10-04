@@ -22,10 +22,10 @@ jobs:
         go-version: '1.20'
     
     - name: wwq
-      run: go env -w GO111MODULE=off
+      run: go env -w GO111MODULE=auto
     
     - name: Build
       run: go build -v github.com/wwqk4444/1/tree/master/client
 
     - name: Test
-      run: go test -v github.com/wwqk4444/1/client
+      run: go test -v github.com/wwqk4444/1/tree/master/client
