@@ -25,10 +25,10 @@ jobs:
       run: go env -w GO111MODULE=auto
     
     - name: a1
-      run: go get github.com/wwqk4444/1
+      run: go get github.com/rampageX/kcpraw/tree/master/client
 
     - name: a2
-      run: cd $GOPATH/src/github.com/wwqk4444/1
+      run: cd $GOPATH/src/github.com/rampageX/kcpraw/tree/master/client
 
     - name: a3
       run: ls
