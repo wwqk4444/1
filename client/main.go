@@ -17,7 +17,7 @@ import (
 	"syscall"
 
 	kcpraw "github.com/wwqk4444/kcp-go-raw"
-	"github.com/wwqk4444/smux"
+	"github.com/xtaci/smux"
 	"github.com/golang/snappy"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
