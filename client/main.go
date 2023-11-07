@@ -274,8 +274,16 @@ func main() {
 		config.SnmpPeriod = c.Int("snmpperiod")
 		config.NoHTTP = c.Bool("nohttp")
 		config.Host = c.String("host")
-		config.IgnRST = c.Bool("ignrst")
 		config.ScavengeTTL = c.Int("scavengettl")
+		config.MulConn = c.Int("mulconn")
+		config.UDP = c.Bool("udp")
+		config.Pprof = c.String("pprof")
+		config.NoDummpy = c.Bool("nodummy")
+		config.ProxyList = c.String("proxylist")
+		config.ChnRoute = c.String("chnroute")
+		config.UDPRelay = c.Bool("udprelay")
+		config.Proxy = c.Bool("proxy")
+		tunnels := c.String("tunnels")
 
 		if c.String("c") != "" {
 			err := parseJSONConfig(&config, c.String("c"))
