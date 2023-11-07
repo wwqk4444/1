@@ -10,7 +10,6 @@ import (
 	"net"
 	"os"
 	"time"
-	"encoding/json"
 
 	"golang.org/x/crypto/pbkdf2"
 
@@ -318,7 +317,7 @@ func main() {
 		config.ChnRoute = c.String("chnroute")
 		config.UDPRelay = c.Bool("udprelay")
 		config.Proxy = c.Bool("proxy")
-		tunnels := c.String("tunnels")
+		
 
 		if c.String("c") != "" {
 			err := parseJSONConfig(&config, c.String("c"))
