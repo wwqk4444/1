@@ -16,7 +16,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	kcpraw "github.com/ccsexyz/kcp-go-raw"
+	kcpraw "github.com/wwqk4444/kcp-go-raw"
 	"github.com/ccsexyz/smux"
 	"github.com/golang/snappy"
 	"github.com/urfave/cli"
