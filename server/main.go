@@ -16,11 +16,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	kcpraw "github.com/wwqk4444/kcp-go-raw"
-	"github.com/ccsexyz/smux"
 	"github.com/golang/snappy"
 	"github.com/urfave/cli"
-	kcp "github.com/xtaci/kcp-go"
+	kcp "github.com/wwqk4444/kcp-go"
+	kcpraw "github.com/wwqk4444/kcp-go-raw"
+	"github.com/xtaci/smux"
 )
 
 var (
@@ -247,6 +247,14 @@ func main() {
 			Name:  "ignrst",
 			Usage: "ignore tcp rst packet(set it with caution)",
 		},
+		cli.BoolFlag{
+			Name:  "usemul",
+			Usage: "accept multiple underlying conns for one kcp connection (mulcon)",
+		},
+		cli.BoolFlag{
+			Name:  "udp",
+			Usage: "enable udp mode",
+		},
 	}
 	myApp.Action = func(c *cli.Context) error {
 		config := Config{}
@@ -274,6 +282,8 @@ func main() {
 		config.SnmpPeriod = c.Int("snmpperiod")
 		config.NoHTTP = c.Bool("nohttp")
 		config.IgnRST = c.Bool("ignrst")
+		config.UseMul = c.Bool("usemul")
+		config.UDP = c.Bool("udp")
 
 		if c.String("c") != "" {
 			//Now only support json config file

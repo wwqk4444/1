@@ -16,14 +16,13 @@ import (
 	"os/signal"
 	"syscall"
 
-	kcpraw "github.com/wwqk4444/kcp-go-raw"
-	"github.com/xtaci/smux"
 	"github.com/golang/snappy"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 	kcp "github.com/wwqk4444/kcp-go"
+	kcpraw "github.com/wwqk4444/kcp-go-raw"
+	"github.com/xtaci/smux"
 )
-
 
 var (
 	// VERSION is injected by buildflags
@@ -237,6 +236,10 @@ func main() {
 			Name:  "nohttp",
 			Usage: "don't send http request after tcp 3-way handshake",
 		},
+		cli.BoolFlag{
+			Name:  "ignrst",
+			Usage: "ignore tcp rst packet(set it with caution)",
+		},
 		cli.IntFlag{
 			Name:  "scavengettl",
 			Value: 600,
@@ -307,6 +310,7 @@ func main() {
 		config.SnmpLog = c.String("snmplog")
 		config.SnmpPeriod = c.Int("snmpperiod")
 		config.NoHTTP = c.Bool("nohttp")
+		config.IgnRST = c.Bool("ignrst")
 		config.Host = c.String("host")
 		config.ScavengeTTL = c.Int("scavengettl")
 		config.MulConn = c.Int("mulconn")
@@ -317,7 +321,6 @@ func main() {
 		config.ChnRoute = c.String("chnroute")
 		config.UDPRelay = c.Bool("udprelay")
 		config.Proxy = c.Bool("proxy")
-		
 
 		if c.String("c") != "" {
 			err := parseJSONConfig(&config, c.String("c"))

@@ -1,0 +1,36 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Check formatting
+        run: test -z "$(gofmt -l client server)"
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: |
+          go build -o kcpraw_client ./client
+          go build -o kcpraw_server ./server
+
+      - name: Smoke -h
+        run: |
+          ./kcpraw_client -h
+          ./kcpraw_server -h
+
+      - name: Cross-compile linux/arm64
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /dev/null ./client
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /dev/null ./server
