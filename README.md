@@ -55,12 +55,14 @@ go build -o kcpraw_server ./server
 里通过 `replace` 指向了仓库内的本地副本 `third_party/kcp-go`,
 原因与来源说明见该目录下的 `NOTICE.md`。
 
-双方加 `--udp` 参数时可不走伪造 TCP,直接使用普通 UDP 传输(无需 root),
-适合本地调试,例如:
+双方加 `--udp` 参数时可不走伪造 TCP,直接使用普通 UDP 传输(无需 root)。
+这只是调试用的退路,日常使用请用默认的伪造 TCP 模式。
+
+伪造 TCP 模式在 Linux loopback 上的端到端冒烟测试(含 HTTP 伪装、`--nohttp`、
+连接过期回收、多路底层连接,并校验 iptables 规则在退出时被清理):
 
 ```
-./kcpraw_server --udp -l 127.0.0.1:29900 -t 127.0.0.1:8388
-./kcpraw_client --udp -l :12948 -r 127.0.0.1:29900
+python3 scripts/smoke_faketcp.py   # 需要 root 或免密 sudo
 ```
 
 windows 下编译依赖 [winpcap](http://www.winpcap.org/install/) 和 gcc 请自行解决环境问题    

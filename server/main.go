@@ -9,6 +9,8 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"os/exec"
+	"runtime"
 	"time"
 
 	"golang.org/x/crypto/pbkdf2"
@@ -299,6 +301,7 @@ func main() {
 			log.SetOutput(f)
 		}
 
+		checkFakeTCPPrereq(config.UDP)
 		kcpraw.SetNoHTTP(config.NoHTTP)
 		kcpraw.SetDSCP(config.DSCP)
 		kcpraw.SetIgnRST(config.IgnRST)
@@ -345,8 +348,17 @@ func main() {
 			block, _ = kcp.NewAESBlockCrypt(pass)
 		}
 
-		//lis, err := kcpraw.ListenWithOptions(config.Listen, block, config.DataShard, config.ParityShard)
-		lis, err := kcpraw.ListenWithOptions(config.Listen, block, config.DataShard, config.ParityShard, config.Key, config.UseMul, config.UDP)
+		// Listen on the underlying fake-tcp/udp socket ourselves (same steps
+		// as kcpraw.ListenWithOptions) so we keep a handle to it:
+		// kcp.Listener does not close externally provided conns, and on
+		// Linux the fake-tcp listener owns iptables rules that must be
+		// removed when it is closed.
+		packetConn, err := kcpraw.ListenRAW(config.Listen, config.Key, config.UseMul, config.UDP, nil)
+		checkError(err)
+		lis, err := kcp.ServeConn(block, config.DataShard, config.ParityShard, packetConn)
+		if err != nil {
+			packetConn.Close()
+		}
 		checkError(err)
 		log.Println("listening on:", lis.Addr())
 		log.Println("target:", config.Target)
@@ -369,6 +381,7 @@ func main() {
 		go func() {
 			<-sigch
 			lis.Close()
+			packetConn.Close()
 			os.Exit(1)
 		}()
 
@@ -423,6 +436,26 @@ func snmpLogger(path string, interval int) {
 			kcp.DefaultSnmp.Reset()
 			w.Flush()
 			f.Close()
+		}
+	}
+}
+
+// checkFakeTCPPrereq fails early with a clear message when the default
+// fake-tcp transport cannot work: it needs raw sockets (root) and, on
+// Linux, the iptables binary to suppress kernel RST packets.
+func checkFakeTCPPrereq(udpMode bool) {
+	if udpMode {
+		return
+	}
+	switch runtime.GOOS {
+	case "linux", "darwin":
+		if os.Geteuid() != 0 {
+			log.Fatal("fake-tcp mode needs root to open raw sockets (run with sudo, or use --udp for plain UDP mode)")
+		}
+	}
+	if runtime.GOOS == "linux" {
+		if _, err := exec.LookPath("iptables"); err != nil {
+			log.Fatal("fake-tcp mode needs the iptables binary to drop kernel RST packets")
 		}
 	}
 }

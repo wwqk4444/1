@@ -25,3 +25,7 @@ _testmain.go
 client/client
 server/server
 .idea
+
+# smoke test binaries
+kcpraw_client
+kcpraw_server
