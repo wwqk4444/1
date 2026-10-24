@@ -45,7 +45,6 @@ type Config struct {
 	Proxy        bool   `json:"proxy"`
 }
 
-
 func parseJSONConfig(config *Config, path string) error {
 	file, err := os.Open(path) // For read access.
 	if err != nil {

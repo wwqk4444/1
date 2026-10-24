@@ -31,6 +31,8 @@ type Config struct {
 	SnmpPeriod   int    `json:"snmpperiod"`
 	NoHTTP       bool   `json:"nohttp"`
 	IgnRST       bool   `json:"ignrst"`
+	UseMul       bool   `json:"usemul"`
+	UDP          bool   `json:"udp"`
 }
 
 func parseJSONConfig(config *Config, path string) error {

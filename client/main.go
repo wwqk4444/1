@@ -9,6 +9,8 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"os/exec"
+	"runtime"
 	"time"
 
 	"golang.org/x/crypto/pbkdf2"
@@ -16,14 +18,13 @@ import (
 	"os/signal"
 	"syscall"
 
-	kcpraw "github.com/wwqk4444/kcp-go-raw"
-	"github.com/xtaci/smux"
 	"github.com/golang/snappy"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 	kcp "github.com/wwqk4444/kcp-go"
+	kcpraw "github.com/wwqk4444/kcp-go-raw"
+	"github.com/xtaci/smux"
 )
-
 
 var (
 	// VERSION is injected by buildflags
@@ -237,6 +238,10 @@ func main() {
 			Name:  "nohttp",
 			Usage: "don't send http request after tcp 3-way handshake",
 		},
+		cli.BoolFlag{
+			Name:  "ignrst",
+			Usage: "ignore tcp rst packet(set it with caution)",
+		},
 		cli.IntFlag{
 			Name:  "scavengettl",
 			Value: 600,
@@ -307,6 +312,7 @@ func main() {
 		config.SnmpLog = c.String("snmplog")
 		config.SnmpPeriod = c.Int("snmpperiod")
 		config.NoHTTP = c.Bool("nohttp")
+		config.IgnRST = c.Bool("ignrst")
 		config.Host = c.String("host")
 		config.ScavengeTTL = c.Int("scavengettl")
 		config.MulConn = c.Int("mulconn")
@@ -317,7 +323,6 @@ func main() {
 		config.ChnRoute = c.String("chnroute")
 		config.UDPRelay = c.Bool("udprelay")
 		config.Proxy = c.Bool("proxy")
-		
 
 		if c.String("c") != "" {
 			err := parseJSONConfig(&config, c.String("c"))
@@ -328,6 +333,7 @@ func main() {
 		kcpraw.SetHost(config.Host)
 		kcpraw.SetDSCP(config.DSCP)
 		kcpraw.SetIgnRST(config.IgnRST)
+		checkFakeTCPPrereq(config.UDP)
 
 		// log redirect
 		if config.Log != "" {
@@ -412,10 +418,21 @@ func main() {
 		smuxConfig.MaxReceiveBuffer = config.SockBuf
 		smuxConfig.KeepAliveInterval = time.Duration(config.KeepAlive) * time.Second
 
-		createConn := func() (*smux.Session, error) {
-			kcpconn, err := kcpraw.DialWithOptions(config.RemoteAddr, block, config.DataShard, config.ParityShard, config.Key, config.MulConn, config.UDP)
+		// createConn dials a new connection to the server and wraps it in a
+		// smux session. It also returns the underlying fake-tcp/udp conn as
+		// an io.Closer: kcp.UDPSession does not close externally provided
+		// conns, and on Linux the fake-tcp conn owns an iptables rule that
+		// must be removed when the conn is closed, so the caller is
+		// responsible for closing it.
+		createConn := func() (*smux.Session, io.Closer, error) {
+			packetConn, err := kcpraw.DialRAW(config.RemoteAddr, config.Key, config.MulConn, config.UDP, nil)
 			if err != nil {
-				return nil, errors.Wrap(err, "createConn()")
+				return nil, nil, errors.Wrap(err, "createConn()")
+			}
+			kcpconn, err := kcp.NewConn(config.RemoteAddr, block, config.DataShard, config.ParityShard, packetConn)
+			if err != nil {
+				packetConn.Close()
+				return nil, nil, errors.Wrap(err, "createConn()")
 			}
 			kcpconn.SetStreamMode(true)
 			kcpconn.SetWriteDelay(true)
@@ -432,16 +449,18 @@ func main() {
 				session, err = smux.Client(newCompStream(kcpconn), smuxConfig)
 			}
 			if err != nil {
-				return nil, errors.Wrap(err, "createConn()")
+				kcpconn.Close()
+				packetConn.Close()
+				return nil, nil, errors.Wrap(err, "createConn()")
 			}
-			return session, nil
+			return session, packetConn, nil
 		}
 
 		// wait until a connection is ready
-		waitConn := func() *smux.Session {
+		waitConn := func() (*smux.Session, io.Closer) {
 			for {
-				if session, err := createConn(); err == nil {
-					return session
+				if session, under, err := createConn(); err == nil {
+					return session, under
 				} else {
 					time.Sleep(time.Second)
 				}
@@ -451,13 +470,15 @@ func main() {
 		numconn := uint16(config.Conn)
 		muxes := make([]struct {
 			session *smux.Session
+			under   io.Closer // underlying fake-tcp/udp conn, closed with the session
 			ttl     time.Time
 		}, numconn)
 
 		for k := range muxes {
-			sess, err := createConn()
+			sess, under, err := createConn()
 			checkError(err)
 			muxes[k].session = sess
+			muxes[k].under = under
 			muxes[k].ttl = time.Now().Add(time.Duration(config.AutoExpire) * time.Second)
 		}
 
@@ -467,11 +488,14 @@ func main() {
 			<-sigch
 			for _, v := range muxes {
 				v.session.Close()
+				if v.under != nil {
+					v.under.Close()
+				}
 			}
 			os.Exit(1)
 		}()
 
-		chScavenger := make(chan *smux.Session, 128)
+		chScavenger := make(chan expiredConn, 128)
 		go scavenger(chScavenger, config.ScavengeTTL)
 		go snmpLogger(config.SnmpLog, config.SnmpPeriod)
 		rr := uint16(0)
@@ -485,8 +509,8 @@ func main() {
 
 			// do auto expiration && reconnection
 			if muxes[idx].session.IsClosed() || (config.AutoExpire > 0 && time.Now().After(muxes[idx].ttl)) {
-				chScavenger <- muxes[idx].session
-				muxes[idx].session = waitConn()
+				chScavenger <- expiredConn{muxes[idx].session, muxes[idx].under}
+				muxes[idx].session, muxes[idx].under = waitConn()
 				muxes[idx].ttl = time.Now().Add(time.Duration(config.AutoExpire) * time.Second)
 			}
 
@@ -497,19 +521,27 @@ func main() {
 	myApp.Run(os.Args)
 }
 
+// expiredConn is a session that has been replaced, together with its
+// underlying conn. The scavenger closes both once the session drains.
+type expiredConn struct {
+	session *smux.Session
+	under   io.Closer
+}
+
 type scavengeSession struct {
 	session *smux.Session
+	under   io.Closer
 	ts      time.Time
 }
 
-func scavenger(ch chan *smux.Session, ttl int) {
+func scavenger(ch chan expiredConn, ttl int) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	var sessionList []scavengeSession
 	for {
 		select {
-		case sess := <-ch:
-			sessionList = append(sessionList, scavengeSession{sess, time.Now()})
+		case ec := <-ch:
+			sessionList = append(sessionList, scavengeSession{ec.session, ec.under, time.Now()})
 			log.Println("session marked as expired")
 		case <-ticker.C:
 			var newList []scavengeSession
@@ -518,9 +550,15 @@ func scavenger(ch chan *smux.Session, ttl int) {
 				if s.session.NumStreams() == 0 || s.session.IsClosed() {
 					log.Println("session normally closed")
 					s.session.Close()
+					if s.under != nil {
+						s.under.Close()
+					}
 				} else if ttl >= 0 && time.Since(s.ts) >= time.Duration(ttl)*time.Second {
 					log.Println("session reached scavenge ttl")
 					s.session.Close()
+					if s.under != nil {
+						s.under.Close()
+					}
 				} else {
 					newList = append(newList, sessionList[k])
 				}
@@ -557,6 +595,26 @@ func snmpLogger(path string, interval int) {
 			kcp.DefaultSnmp.Reset()
 			w.Flush()
 			f.Close()
+		}
+	}
+}
+
+// checkFakeTCPPrereq fails early with a clear message when the default
+// fake-tcp transport cannot work: it needs raw sockets (root) and, on
+// Linux, the iptables binary to suppress kernel RST packets.
+func checkFakeTCPPrereq(udpMode bool) {
+	if udpMode {
+		return
+	}
+	switch runtime.GOOS {
+	case "linux", "darwin":
+		if os.Geteuid() != 0 {
+			log.Fatal("fake-tcp mode needs root to open raw sockets (run with sudo, or use --udp for plain UDP mode)")
+		}
+	}
+	if runtime.GOOS == "linux" {
+		if _, err := exec.LookPath("iptables"); err != nil {
+			log.Fatal("fake-tcp mode needs the iptables binary to drop kernel RST packets")
 		}
 	}
 }
